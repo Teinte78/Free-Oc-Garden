@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>OC 小花园</title>
+<style>
+  :root {
+    --bg: #fdf6f9;
+    --pink: #ffb7c5;
+    --pink-dark: #e8899a;
+    --text: #5a4a4f;
+    --muted: #a08d94;
+    --radius: 18px;
+    --purple: #8b5cf6;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: system-ui, -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
+    color: var(--text);
+    overscroll-behavior: none;
+  }
+
+  #garden {
+    position: absolute; inset: 0;
+    background-color: var(--bg);
+    background-image: radial-gradient(#f5e6eb 1.5px, transparent 1.5px);
+    background-size: 24px 24px;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+  }
+  .character {
+    position: absolute;
+    width: 90px; height: 90px;
+    cursor: grab;
+    will-change: left, top;
+    z-index: 10;
+    transition: filter 0.15s;
+  }
+  .character img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.08));
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  .character.flip img { transform: scaleX(-1); }
+
+  .character.dragging {
+    cursor: grabbing;
+    z-index: 999;
+    filter: drop-shadow(0 10px 18px rgba(232,137,154,0.4));
+  }
+  .character.dragging img {
+    filter: drop-shadow(0 10px 18px rgba(0,0,0,0.28));
+    transform: scale(1.08);
+  }
+  .character.dragging.flip img {
+    transform: scaleX(-1) scale(1.08);
+  }
+
+  @keyframes jump {
+    0%   { transform: translateY(0); }
+    35%  { transform: translateY(-18px); }
+    65%  { transform: translateY(-6px); }
+    100% { transform: translateY(0); }
+  }
+  .character.jumping {
+    animation: jump 0.5s cubic-bezier(.36,.07,.19,.97);
+  }
+
+  .bubble {
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    transform: translateX(-50%);
+    margin-bottom: 8px;
+    background: #fff;
+    border-radius: 999px;
+    padding: 7px 15px;
+    font-size: 13px;
+    line-height: 1.4;
+    width: max-content;
+    max-width: min(280px, 70vw);
+    white-space: normal;
+    overflow-wrap: break-word;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(232,137,154,0.2);
+    border: 1.5px solid #ffe0e7;
+    pointer-events: none;
+    z-index: 100;
+    animation: pop 0.18s ease-out;
+  }
+  .bubble::after {
+    content: '';
+    position: absolute;
+    left: 50%; bottom: -6px;
+    transform: translateX(-50%);
+    width: 10px; height: 10px;
+    background: #fff;
+    border-right: 1.5px solid #ffe0e7;
+    border-bottom: 1.5px solid #ffe0e7;
+    border-radius: 0 0 3px 0;
+    rotate: 45deg;
+  }
+  .bubble.below {
+    bottom: auto;
+    top: 100%;
+    margin-bottom: 0;
+    margin-top: 8px;
+  }
+  .bubble.below::after {
+    bottom: auto; top: -6px;
+    border-right: none; border-bottom: none;
+    border-left: 1.5px solid #ffe0e7;
+    border-top: 1.5px solid #ffe0e7;
+    border-radius: 3px 0 0 0;
+    rotate: 45deg;
+  }
+  @keyframes pop {
+    from { transform: translateX(-50%) scale(0.8); opacity: 0; }
+    to { transform: translateX(-50%) scale(1); opacity: 1; }
+  }
+
+  .topic-bubble {
+    position: absolute;
+    background: #f5efff;
+    color: var(--purple);
+    border: 1.5px solid #e0d4fb;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    width: max-content;
+    max-width: min(260px, 72vw);
+    white-space: normal;
+    text-align: center;
+    overflow-wrap: break-word;
+    pointer-events: none;
+    z-index: 200;
+    box-shadow: 0 4px 14px rgba(139,92,246,0.18);
+    transform: translate(-50%, -100%);
+    animation: topicPop 0.22s ease-out;
+  }
+  .topic-bubble::after {
+    content: '';
+    position: absolute;
+    left: 50%; bottom: -6px;
+    transform: translateX(-50%);
+    width: 10px; height: 10px;
+    background: #f5efff;
+    border-right: 1.5px solid #e0d4fb;
+    border-bottom: 1.5px solid #e0d4fb;
+    border-radius: 0 0 3px 0;
+    rotate: 45deg;
+  }
+  @keyframes topicPop {
+    from { opacity: 0; transform: translate(-50%, -85%) scale(0.85); }
+    to { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+  }
+
+  #food-bar {
+    position: fixed;
+    right: 10px;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 400;
+  }
+  .food-chip {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #ffe0a0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: grab;
+  }
+  .food-chip:active { transform: scale(0.92); }
+  .drag-ghost {
+    position: fixed;
+    width: 64px; height: 64px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px;
+    pointer-events: none;
+    z-index: 2000;
+    transform: translate(-50%, -50%);
+    filter: drop-shadow(0 6px 12px rgba(0,0,0,0.22));
+  }
+
+  #toolbar {
+    position: fixed;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 8px;
+    z-index: 500;
+  }
+  .btn {
+    background: #ffffffdd;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1.5px solid var(--pink);
+    border-radius: 999px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--pink-dark);
+    box-shadow: 0 4px 14px rgba(232,137,154,0.15);
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn.primary { background: var(--pink); color: #fff; }
+  .btn.danger { color: #d9534f; border-color: #f0c0c0; }
+  .btn.small { padding: 7px 12px; font-size: 12px; }
+
+  #panel {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: var(--bg);
+    display: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    padding: 0 16px calc(120px + env(safe-area-inset-bottom, 0px)) 16px;
+  }
+  #panel.open { display: block; }
+  .panel-head {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 0 10px;
+    background: linear-gradient(var(--bg) 75%, rgba(253,246,249,0));
+  }
+  .panel-head h2 { margin: 0; font-size: 18px; }
+
+  .card {
+    background: #fff;
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 10px rgba(232,137,154,0.08);
+    border: 1px solid #ffeef2;
+  }
+  .card h3 { margin: 0 0 10px; font-size: 15px; color: var(--pink-dark); }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  label .tip { color: #c4b0b7; font-weight: 400; }
+  input[type="text"], textarea, select {
+    width: 100%;
+    border: 1.5px solid #ffe0e7;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 14px;
+    background: #fffafb;
+    color: var(--text);
+    font-family: inherit;
+    outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--pink); }
+  textarea { min-height: 60px; resize: vertical; }
+  input[type="range"] { width: 100%; accent-color: var(--pink); }
+
+  .relation-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 8px;
+    background: #fff7f9;
+    border-radius: 12px;
+  }
+  .relation-row .who { font-size: 13px; font-weight: 600; }
+  .relation-row select { width: auto; padding: 6px 10px; font-size: 12px; }
+
+  .food-prefs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .food-pref {
+    position: relative;
+    width: 46px; height: 46px;
+    border-radius: 13px;
+    border: 2px solid #eee;
+    background: #fff;
+    font-size: 23px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .food-pref.like { border-color: #ff9eb5; background: #fff0f4; }
+  .food-pref.like::after {
+    content: '♥'; position: absolute; bottom: -5px; right: -3px;
+    font-size: 11px; color: #ff6b8a;
+  }
+  .food-pref.dislike { border-color: #ccc; background: #f4f4f4; opacity: 0.65; }
+  .food-pref.dislike::after {
+    content: '✕'; position: absolute; bottom: -5px; right: -3px;
+    font-size: 11px; color: #999;
+  }
+  .food-legend { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  .reaction-row { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+  .reaction-preview {
+    width: 52px; height: 52px;
+    border-radius: 12px;
+    background: #fff7f9;
+    border: 1.5px dashed #ffd0dc;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #c4b0b7;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+  .bg-preview {
+    width: 100%;
+    height: 110px;
+    border-radius: 12px;
+    background: #fff7f9;
+    border: 1.5px dashed #ffd0dc;
+    object-fit: cover;
+    display: block;
+    margin-bottom: 8px;
+  }
+  .bg-placeholder {
+    width: 100%;
+    height: 80px;
+    border-radius: 12px;
+    background: repeating-linear-gradient(45deg,#fff7f9,#fff7f9 10px,#fffafb 10px,#fffafb 20px);
+    border: 1.5px dashed #ffd0dc;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: #c4b0b7;
+    margin-bottom: 8px;
+  }
+
+  .hint { font-size: 11px; color: #b8a3aa; text-align: center; margin-top: 8px; line-height: 1.6; }
+  .empty { text-align: center; color: #c4b0b7; font-size: 14px; padding: 40px 0; }
+  .row { display: flex; gap: 8px; align-items: center; }
+</style>
+</head>
+<body>
+
+<!-- 报错捕获提示条 -->
+<div id="error-bar" style="display:none; position:fixed; top:0; left:0; right:0; background:#d9534f; color:#fff; padding:10px; font-size:12px; z-index:9999; word-break:break-all;"></div>
+
+<div id="garden"></div>
+
+<div id="food-bar">
+  <div class="food-chip" data-food="cookie">🍪</div>
+  <div class="food-chip" data-food="apple">🍎</div>
+  <div class="food-chip" data-food="meat">🍖</div>
+  <div class="food-chip" data-food="cake">🍰</div>
+  <div class="food-chip" data-food="carrot">🥕</div>
+</div>
+
+<div id="toolbar">
+  <button class="btn primary" id="btn-add">＋ 角色</button>
+  <button class="btn" id="btn-edit">✎ 设定</button>
+  <button class="btn" id="btn-data">⇅ 存档</button>
+  <button class="btn" id="btn-sound">🔊</button>
+</div>
+
+<div id="panel">
+  <div class="panel-head">
+    <h2>✎ 设定</h2>
+    <button class="btn" id="btn-close">关闭</button>
+  </div>
+  <div id="panel-body"></div>
+</div>
+
+<script>
+// 捕获报错并显示在顶部
+window.onerror = function(msg, url, line, col, error) {
+  const bar = document.getElementById('error-bar');
+  bar.style.display = 'block';
+  bar.textContent = '⚠️ 错误: ' + msg + ' (行 ' + line + ')';
+  return false;
+};
+
+const STORE_KEY = 'oc_garden_v1';
+const CATCHPHRASE_CHANCE = 0.3;
+const MEET_CHANCE = 0.4;
+const MEET_COOLDOWN = 3000;
+const REACTION_DURATION = 3000;
+const ESCAPE_DURATION = 800;
+const THROW_MAX = 18;
+const FOLLOW_CHANCE = 0.35;
+const FOLLOW_DURATION = 6000;
+const FOLLOW_STOP_DIST = 90;
+
+const FOODS = [
+  { id: 'cookie', emoji: '🍪', name: '饼干' },
+  { id: 'apple',  emoji: '🍎', name: '苹果' },
+  { id: 'meat',   emoji: '🍖', name: '肉' },
+  { id: 'cake',   emoji: '🍰', name: '蛋糕' },
+  { id: 'carrot', emoji: '🥕', name: '胡萝卜' }
+];
+
+const RELATION_LABELS = {
+  stranger: '陌生', friend: '朋友', close: '亲密',
+  lover: '恋人', dislike: '讨厌', oneway: '单方面喜欢'
+};
+
+const FOLLOW_RELATIONS = ['close', 'lover', 'oneway'];
+
+const RELATION_LINES = {
+  stranger: ['……你好。', '我们好像没见过？', '（对方只是看了看你）'],
+  friend: ['嗨！又碰到你啦！', '今天过得怎么样？', '要一起走走吗？'],
+  close: ['见到你就安心了。', '（自然地靠了过来）', '你刚才去哪了呀？'],
+  lover: ['……又见面了。', '（脸微微发红）', '今天也想和你待在一起。'],
+  dislike: ['哼。', '别靠这么近。', '……真不想碰到你。'],
+  oneway: ['（偷偷看了你一眼）', '……没什么。', '你今天好像很开心？']
+};
+
+const MOOD_LINES = {
+  happy: ['今天心情不错！', '嘿嘿～', '（轻轻晃了晃）', '你来啦！'],
+  confused: ['嗯……？', '怎么了？', '（歪了歪头）', '你刚才说什么？'],
+  angry: ['哼！', '别碰我啦。', '（鼓起了脸）', '我现在不想说话。'],
+  neutral: ['……', '（安静地待着）', '有事吗？', '嗯。']
+};
+
+function defaultData() {
+  return { characters: [], relations: {}, settings: { speed: 0.25, sound: true, bgImage: null }, nextId: 1 };
+}
+
+let data, characters = [], animId = null, collisionCooldown = new Map(), followCheckTimer = 0, saveFailedNotified = false;
+
+try {
+  const raw = localStorage.getItem(STORE_KEY);
+  if (raw) {
+    data = JSON.parse(raw);
+  } else {
+    data = defaultData();
+  }
+} catch(e) {
+  data = defaultData();
+}
+
+if (!data.characters) data.characters = [];
+if (!data.relations) data.relations = {};
+if (!data.settings) data.settings = { speed: 0.25, sound: true, bgImage: null };
+if (data.settings.speed == null) data.settings.speed = 0.25;
+if (data.settings.sound == null) data.settings.sound = true;
+if (data.settings.bgImage === undefined) data.settings.bgImage = null;
+if (!data.nextId) data.nextId = 1;
+data.characters.forEach(c => {
+  if (!c.foodPrefs) c.foodPrefs = {};
+  if (!c.catchphrase) c.catchphrase = [];
+  if (!c.topics) c.topics = [];
+  if (!c.clickLines) c.clickLines = [];
+  if (!c.meetLines) c.meetLines = [];
+  if (!c.specialLines) c.specialLines = {};
+  if (c.reactionImage === undefined) c.reactionImage = null;
+  if (!c.size) c.size = 90;
+});
+
+function uid() { return 'c' + (data.nextId++); }
+function saveData() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
+  catch (e) {
+    if (!saveFailedNotified) {
+      saveFailedNotified = true;
+      alert('⚠️ 浏览器存储空间不足，最近的改动可能没有保存。请尽快导出 JSON 备份！');
+    }
+  }
+}
+function relKey(a, b) { return [a, b].sort().join('|'); }
+function getRelation(a, b) { return data.relations[relKey(a, b)] || 'stranger'; }
+function setRelation(a, b, t) { data.relations[relKey(a, b)] = t; saveData(); }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function getSpeed() { return data.settings.speed || 0.25; }
+
+function applyBackground() {
+  const garden = document.getElementById('garden');
+  if (data.settings.bgImage) {
+    garden.style.backgroundImage = 'url(' + data.settings.bgImage + ')';
+    garden.style.backgroundSize = 'cover';
+    garden.style.backgroundPosition = 'center';
+    garden.style.backgroundRepeat = 'no-repeat';
+  } else {
+    garden.style.backgroundImage = 'radial-gradient(#f5e6eb 1.5px, transparent 1.5px)';
+    garden.style.backgroundSize = '24px 24px';
+  }
+}
+
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    } catch (e) {}
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function pitchFor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 100;
+  return 0.85 + (h % 35) / 100;
+}
+function playSqueak(pitch) {
+  if (!data.settings.sound) return;
+  ensureAudio();
+  if (!audioCtx) return;
+  pitch = pitch || 1;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  const base = 880 * pitch + Math.random() * 160;
+  osc.frequency.setValueAtTime(base, t);
+  osc.frequency.exponentialRampToValueAtTime(base * 1.55, t + 0.055);
+  osc.frequency.exponentialRampToValueAtTime(base * 0.85, t + 0.14);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.11, t + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.2);
+}
+
+function withCatchphrase(charId, content) {
+  const cfg = data.characters.find(c => c.id === charId);
+  if (!cfg) return content;
+  const cp = (cfg.catchphrase || []).map(s => s.trim()).filter(Boolean);
+  if (cp.length && Math.random() < CATCHPHRASE_CHANCE) {
+    const phrase = pick(cp);
+    const needSpace = /[A-Za-z0-9]$/.test(content);
+    return content + (needSpace ? ' ' : '') + phrase;
+  }
+  return content;
+}
+
+const bubbleTimers = new Map();
+function showBubble(charId, text, duration) {
+  const ch = characters.find(c => c.id === charId);
+  if (!ch) return;
+  duration = duration || 2600;
+  const old = ch.el.querySelector('.bubble');
+  if (old) old.remove();
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  if (ch.y < 90) bubble.classList.add('below');
+  ch.el.appendChild(bubble);
+
+  if (bubbleTimers.has(charId)) clearTimeout(bubbleTimers.get(charId));
+  bubbleTimers.set(charId, setTimeout(() => {
+    if (bubble.parentNode) bubble.remove();
+    bubbleTimers.delete(charId);
+  }, duration));
+}
+
+function showTopicBubble(a, b, text) {
+  const garden = document.getElementById('garden');
+  if (!garden) return;
+  const el = document.createElement('div');
+  el.className = 'topic-bubble';
+  el.textContent = '💬 ' + text;
+
+  const ax = a.x + a.size / 2, ay = a.y;
+  const bx = b.x + b.size / 2, by = b.y;
+  const cx = (ax + bx) / 2;
+  const cy = Math.min(ay, by) - 6;
+
+  el.style.left = Math.max(10, Math.min(garden.clientWidth - 10, cx)) + 'px';
+  el.style.top = Math.max(40, cy) + 'px';
+
+  garden.appendChild(el);
+  setTimeout(() => el.remove(), 3400);
+}
+
+function triggerReaction(charId, opts) {
+  opts = opts || {};
+  const freeze = opts.freeze !== false;
+  const jump = opts.jump !== false;
+  const ch = characters.find(c => c.id === charId);
+  if (!ch) return;
+  const cfg = ch.cfg;
+
+  if (jump) {
+    ch.el.classList.remove('jumping');
+    void ch.el.offsetWidth;
+    ch.el.classList.add('jumping');
+    if (ch.jumpTimer) clearTimeout(ch.jumpTimer);
+    ch.jumpTimer = setTimeout(() => {
+      ch.el.classList.remove('jumping');
+      ch.jumpTimer = null;
+    }, 550);
+  }
+
+  if (freeze) {
+    ch.frozen = true;
+    if (ch.freezeTimer) clearTimeout(ch.freezeTimer);
+    ch.freezeTimer = setTimeout(() => {
+      ch.frozen = false;
+      ch.freezeTimer = null;
+      if (!ch.escaping && !ch.isDragging) {
+        ch.vx = (Math.random() - 0.5) * 2;
+        ch.vy = (Math.random() - 0.5) * 2;
+      }
+    }, REACTION_DURATION);
+  }
+
+  const imgEl = ch.el.querySelector('img');
+  if (cfg.reactionImage && imgEl) {
+    if (ch.reactionTimer) clearTimeout(ch.reactionTimer);
+    imgEl.src = cfg.reactionImage;
+    ch.reactionTimer = setTimeout(() => {
+      imgEl.src = cfg.image;
+      ch.reactionTimer = null;
+    }, REACTION_DURATION);
+  }
+}
+
+function renderScene() {
+  const garden = document.getElementById('garden');
+  garden.innerHTML = '';
+  characters = [];
+
+  data.characters.forEach(cfg => {
+    const el = document.createElement('div');
+    el.className = 'character';
+    const size = cfg.size || 90;
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+
+    const img = document.createElement('img');
+    img.src = cfg.image;
+    img.alt = cfg.name;
+    img.draggable = false;
+    el.appendChild(img);
+
+    const maxX = Math.max(10, garden.clientWidth - size - 8);
+    const maxY = Math.max(10, garden.clientHeight - size - 80);
+    let x = cfg.x, y = cfg.y;
+    if (x == null || isNaN(x)) x = Math.random() * maxX;
+    if (y == null || isNaN(y)) y = Math.random() * maxY;
+    x = Math.min(Math.max(4, x), maxX);
+    y = Math.min(Math.max(4, y), maxY);
+
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    garden.appendChild(el);
+
+    const ch = {
+      id: cfg.id, x, y,
+      vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2,
+      el, facing: Math.random() > 0.5 ? 1 : -1, size, cfg,
+      frozen: false, freezeTimer: null, reactionTimer: null, jumpTimer: null,
+      isDragging: false, escaping: false, escapeTimer: null, throwTimer: 0,
+      followTarget: null, followTimer: 0
+    };
+    characters.push(ch);
+
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      startCharDrag(e, ch);
+    });
+  });
+
+  if (animId) cancelAnimationFrame(animId);
+  idleTimer = 0;
+  followCheckTimer = 0;
+  animId = requestAnimationFrame(loop);
+}
+
+let charDrag = null;
+function startCharDrag(e, ch) {
+  ensureAudio();
+  const rect = ch.el.getBoundingClientRect();
+  charDrag = {
+    ch, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
+    offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top,
+    moved: false, lastX: e.clientX, lastY: e.clientY, lastTime: performance.now(),
+    vx: 0, vy: 0
+  };
+  window.addEventListener('pointermove', onCharMove, { passive: false });
+  window.addEventListener('pointerup', onCharUp);
+  window.addEventListener('pointercancel', onCharUp);
+}
+
+function onCharMove(e) {
+  if (!charDrag || e.pointerId !== charDrag.pointerId) return;
+  const dx = e.clientX - charDrag.startX, dy = e.clientY - charDrag.startY;
+  if (!charDrag.moved && Math.hypot(dx, dy) > 8) {
+    charDrag.moved = true;
+    charDrag.ch.isDragging = true;
+    charDrag.ch.escaping = false;
+    charDrag.ch.throwTimer = 0;
+    charDrag.ch.followTarget = null;
+    if (charDrag.ch.escapeTimer) { clearTimeout(charDrag.ch.escapeTimer); charDrag.ch.escapeTimer = null; }
+    charDrag.ch.el.classList.add('dragging');
+    charDrag.ch.frozen = false;
+    if (charDrag.ch.freezeTimer) { clearTimeout(charDrag.ch.freezeTimer); charDrag.ch.freezeTimer = null; }
+  }
+  if (charDrag.moved) {
+    e.preventDefault();
+    const ch = charDrag.ch, garden = document.getElementById('garden'), grect = garden.getBoundingClientRect();
+    let nx = e.clientX - grect.left - charDrag.offsetX;
+    let ny = e.clientY - grect.top - charDrag.offsetY;
+    nx = Math.max(4, Math.min(garden.clientWidth - ch.size - 4, nx));
+    ny = Math.max(4, Math.min(garden.clientHeight - ch.size - 76, ny));
+    ch.x = nx; ch.y = ny;
+    ch.el.style.left = nx + 'px'; ch.el.style.top = ny + 'px';
+    ch.cfg.x = nx; ch.cfg.y = ny;
+
+    const now = performance.now(), dt = Math.max(1, now - charDrag.lastTime);
+    const instVx = (e.clientX - charDrag.lastX) / dt * 16;
+    const instVy = (e.clientY - charDrag.lastY) / dt * 16;
+    charDrag.vx = charDrag.vx * 0.6 + instVx * 0.4;
+    charDrag.vy = charDrag.vy * 0.6 + instVy * 0.4;
+    charDrag.lastX = e.clientX; charDrag.lastY = e.clientY; charDrag.lastTime = now;
+  }
+}
+
+function onCharUp(e) {
+  if (!charDrag) return;
+  const { ch, moved } = charDrag;
+  const dragVx = charDrag.vx, dragVy = charDrag.vy;
+  ch.isDragging = false;
+  ch.el.classList.remove('dragging');
+  window.removeEventListener('pointermove', onCharMove);
+  window.removeEventListener('pointerup', onCharUp);
+  window.removeEventListener('pointercancel', onCharUp);
+  charDrag = null;
+
+  if (!moved) { handleClickCharacter(ch.id); return; }
+
+  const mag = Math.hypot(dragVx, dragVy);
+  if (mag > 0.8) {
+    let fx = dragVx, fy = dragVy;
+    if (mag > THROW_MAX) { fx = dragVx / mag * THROW_MAX; fy = dragVy / mag * THROW_MAX; }
+    ch.vx = fx; ch.vy = fy; ch.throwTimer = 1400;
+  } else {
+    ch.vx = (Math.random() - 0.5) * 2;
+    ch.vy = (Math.random() - 0.5) * 2;
+    ch.throwTimer = 0;
+  }
+  ch.escaping = false;
+  if (ch.escapeTimer) { clearTimeout(ch.escapeTimer); ch.escapeTimer = null; }
+  ch.followTarget = null; ch.followTimer = 0;
+  saveData();
+}
+
+function boxesOverlap(a, b) {
+  return a.x < b.x + b.size && a.x + a.size > b.x && a.y < b.y + b.size && a.y + a.size > b.y;
+}
+
+function checkFollowStart() {
+  characters.forEach(ch => {
+    if (ch.followTarget || ch.frozen || ch.isDragging || ch.escaping || ch.throwTimer > 0) return;
+    if (Math.random() > FOLLOW_CHANCE) return;
+    const candidates = characters.filter(o => {
+      if (o.id === ch.id || o.frozen || o.isDragging) return false;
+      return FOLLOW_RELATIONS.indexOf(getRelation(ch.id, o.id)) !== -1;
+    });
+    if (!candidates.length) return;
+    const target = pick(candidates);
+    if (Math.hypot(target.x - ch.x, target.y - ch.y) < 180) return;
+    ch.followTarget = target.id;
+    ch.followTimer = FOLLOW_DURATION;
+  });
+}
+
+const TURN_CHANCE = 0.006;
+let idleTimer = 0;
+
+function loop() {
+  animId = requestAnimationFrame(loop);
+  const garden = document.getElementById('garden');
+  if (!garden || characters.length === 0) return;
+
+  const W = garden.clientWidth, H = garden.clientHeight;
+  const now = performance.now();
+
+  followCheckTimer += 16;
+  if (followCheckTimer > 1000) { followCheckTimer = 0; checkFollowStart(); }
+
+  characters.forEach(ch => {
+    if (ch.isDragging) { ch.cfg.x = ch.x; ch.cfg.y = ch.y; return; }
+    if (ch.frozen) { ch.el.style.left = ch.x + 'px'; ch.el.style.top = ch.y + 'px'; return; }
+
+    if (!ch.escaping) {
+      if (ch.throwTimer > 0) {
+        ch.throwTimer -= 16;
+        ch.vx *= 0.96; ch.vy *= 0.96;
+        if (Math.hypot(ch.vx, ch.vy) < getSpeed() * 1.2) ch.throwTimer = 0;
+      } else {
+        if (Math.random() < TURN_CHANCE) { ch.vx = (Math.random() - 0.5) * 2; ch.vy = (Math.random() - 0.5) * 2; }
+        const sp = Math.hypot(ch.vx, ch.vy);
+        if (sp > 0.001) { ch.vx = (ch.vx / sp) * getSpeed(); ch.vy = (ch.vy / sp) * getSpeed(); }
+      }
+    }
+
+    if (ch.followTarget && ch.throwTimer <= 0 && !ch.escaping) {
+      const t = characters.find(c => c.id === ch.followTarget);
+      if (!t || t.frozen) { ch.followTarget = null; ch.followTimer = 0; }
+      else {
+        const dx = t.x - ch.x, dy = t.y - ch.y, d = Math.hypot(dx, dy);
+        ch.followTimer -= 16;
+        if (d < FOLLOW_STOP_DIST || ch.followTimer <= 0) { ch.followTarget = null; ch.followTimer = 0; }
+        else { ch.vx = dx / d * getSpeed() * 1.15; ch.vy = dy / d * getSpeed() * 1.15; }
+      }
+    }
+
+    ch.x += ch.vx; ch.y += ch.vy;
+    const pad = 4;
+    if (ch.x <= pad) { ch.x = pad; ch.vx = Math.abs(ch.vx); ch.facing = 1; }
+    if (ch.x + ch.size >= W - pad) { ch.x = W - ch.size - pad; ch.vx = -Math.abs(ch.vx); ch.facing = -1; }
+    if (ch.y <= pad) { ch.y = pad; ch.vy = Math.abs(ch.vy); }
+    if (ch.y + ch.size >= H - 76) { ch.y = H - ch.size - 76; ch.vy = -Math.abs(ch.vy); }
+
+    if (ch.vx > 0.03) ch.facing = 1; else if (ch.vx < -0.03) ch.facing = -1;
+    ch.el.classList.toggle('flip', ch.facing === -1);
+    ch.el.style.left = ch.x + 'px'; ch.el.style.top = ch.y + 'px';
+    ch.cfg.x = ch.x; ch.cfg.y = ch.y;
+  });
+
+  for (let i = 0; i < characters.length; i++) {
+    for (let j = i + 1; j < characters.length; j++) {
+      const a = characters[i], b = characters[j];
+      if (a.frozen || b.frozen || !boxesOverlap(a, b)) continue;
+      const key = relKey(a.id, b.id), last = collisionCooldown.get(key);
+      if (last != null && now - last < MEET_COOLDOWN) continue;
+      if (tryMeet(a, b)) collisionCooldown.set(key, now);
+    }
+  }
+
+  idleTimer += 16;
+  if (idleTimer > 12000) {
+    idleTimer = 0;
+    if (Math.random() < 0.3) {
+      const candidates = characters.filter(c => !c.frozen && !c.isDragging && !c.escaping && (c.cfg.catchphrase || []).length);
+      if (candidates.length) {
+        const ch = pick(candidates);
+        showBubble(ch.id, pick(ch.cfg.catchphrase), 2000);
+        playSqueak(pitchFor(ch.id) * 0.9);
+      }
+    }
+  }
+}
+
+function tryMeet(a, b) {
+  if (Math.random() > MEET_CHANCE) return false;
+  const relation = getRelation(a.id, b.id);
+  let actor, target;
+
+  if (a.isDragging && !b.isDragging) { actor = a; target = b; }
+  else if (b.isDragging && !a.isDragging) { actor = b; target = a; }
+  else if (a.isDragging && b.isDragging) { return false; }
+  else {
+    const dx = (b.x + b.size / 2) - (a.x + a.size / 2);
+    const dy = (b.y + b.size / 2) - (a.y + a.size / 2);
+    const d = Math.hypot(dx, dy) || 1;
+    if ((a.vx * dx + a.vy * dy) / d >= (b.vx * -dx + b.vy * -dy) / d) { actor = a; target = b; }
+    else { actor = b; target = a; }
+  }
+
+  const aTopics = (a.cfg.topics || []).map(t => t.trim()).filter(Boolean);
+  const bTopics = (b.cfg.topics || []).map(t => t.trim()).filter(Boolean);
+  const pool = [], seen = new Set();
+  aTopics.concat(bTopics).forEach(t => { if (!seen.has(t)) { seen.add(t); pool.push(t); } });
+
+  if (pool.length > 0) {
+    let n = pool.length === 1 ? 1 : (pool.length === 2 ? 2 : 2 + Math.floor(Math.random() * 2));
+    const chosen = pool.slice().sort(() => Math.random() - 0.5).slice(0, n);
+    showTopicBubble(actor, target, '正在讨论「' + chosen.join('') + '」的话题');
+  }
+
+  const lineActor = pick(getRelationLines(actor.id, target.id, relation));
+  const lineTarget = pick(getRelationLines(target.id, actor.id, relation));
+
+  showBubble(actor.id, withCatchphrase(actor.id, lineActor), 3200);
+  playSqueak(pitchFor(actor.id) * 1.1);
+  setTimeout(() => {
+    showBubble(target.id, withCatchphrase(target.id, lineTarget), 3200);
+    playSqueak(pitchFor(target.id) * 1.05);
+  }, 900);
+
+  actor.vx = 0; actor.vy = 0; actor.throwTimer = 0;
+  if (actor.isDragging) triggerReaction(actor.id, { freeze: false, jump: false });
+  else triggerReaction(actor.id, { freeze: true, jump: true });
+
+  let ex = (target.x + target.size / 2) - (actor.x + actor.size / 2);
+  let ey = (target.y + target.size / 2) - (actor.y + actor.size / 2);
+  let ed = Math.hypot(ex, ey);
+  if (ed < 1) { const angle = Math.random() * Math.PI * 2; ex = Math.cos(angle); ey = Math.sin(angle); ed = 1; }
+  
+  const escSpeed = getSpeed() * 4;
+  target.vx = (ex / ed) * escSpeed; target.vy = (ey / ed) * escSpeed; target.throwTimer = 0;
+  target.escaping = true;
+  if (target.escapeTimer) clearTimeout(target.escapeTimer);
+  target.escapeTimer = setTimeout(() => {
+    target.escaping = false; target.escapeTimer = null;
+    if (!target.frozen && !target.isDragging) { target.vx = (Math.random() - 0.5) * 2; target.vy = (Math.random() - 0.5) * 2; }
+  }, ESCAPE_DURATION);
+  triggerReaction(target.id, { freeze: false, jump: true });
+
+  if (relation === 'dislike') {
+    actor.el.style.filter = 'brightness(1.15) saturate(1.4)';
+    target.el.style.filter = 'brightness(1.15) saturate(1.4)';
+    setTimeout(() => { actor.el.style.filter = ''; target.el.style.filter = ''; }, 600);
+  }
+  return true;
+}
+
+function getRelationLines(fromId, toId, relation) {
+  const cfg = data.characters.find(c => c.id === fromId);
+  if (cfg) {
+    if (cfg.specialLines && cfg.specialLines[toId] && cfg.specialLines[toId].length) return cfg.specialLines[toId];
+    if (cfg.meetLines && cfg.meetLines.length) return cfg.meetLines;
+  }
+  return RELATION_LINES[relation] || RELATION_LINES.stranger;
+}
+
+function handleClickCharacter(id) {
+  const cfg = data.characters.find(c => c.id === id);
+  if (!cfg) return;
+  let pool;
+  if (cfg.clickLines && cfg.clickLines.length) pool = cfg.clickLines;
+  else pool = MOOD_LINES[cfg.mood] || MOOD_LINES.neutral;
+  showBubble(id, withCatchphrase(id, pick(pool)));
+  triggerReaction(id, { freeze: true, jump: true });
+  playSqueak(pitchFor(id));
+}
+
+let foodDrag = null;
+function startFoodDrag(e, foodId) {
+  e.preventDefault(); ensureAudio(); playSqueak(1.5);
+  const food = FOODS.find(f => f.id === foodId);
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost'; ghost.textContent = food.emoji;
+  document.body.appendChild(ghost);
+  foodDrag = { foodId, ghost, lastX: e.clientX, lastY: e.clientY };
+  moveFoodGhost(e.clientX, e.clientY);
+  window.addEventListener('pointermove', onFoodMove, { passive: false });
+  window.addEventListener('pointerup', onFoodUp);
+  window.addEventListener('pointercancel', onFoodUp);
+}
+function moveFoodGhost(x, y) {
+  if (!foodDrag) return;
+  foodDrag.lastX = x; foodDrag.lastY = y;
+  foodDrag.ghost.style.left = x + 'px'; foodDrag.ghost.style.top = y + 'px';
+}
+function onFoodMove(e) {
+  if (!foodDrag) return;
+  e.preventDefault(); moveFoodGhost(e.clientX, e.clientY);
+}
+function onFoodUp() {
+  if (!foodDrag) return;
+  const { foodId, ghost, lastX, lastY } = foodDrag;
+  ghost.remove();
+  window.removeEventListener('pointermove', onFoodMove);
+  window.removeEventListener('pointerup', onFoodUp);
+  window.removeEventListener('pointercancel', onFoodUp);
+  foodDrag = null;
+  let hitId = null;
+  characters.forEach(ch => {
+    const r = ch.el.getBoundingClientRect();
+    if (lastX >= r.left && lastX <= r.right && lastY >= r.top && lastY <= r.bottom) hitId = ch.id;
+  });
+  if (hitId) feedCharacter(hitId, foodId);
+}
+
+function feedCharacter(id, foodId) {
+  const cfg = data.characters.find(c => c.id === id);
+  if (!cfg) return;
+  const food = FOODS.find(f => f.id === foodId);
+  const pref = (cfg.foodPrefs && cfg.foodPrefs[foodId]) || 'normal';
+  let line;
+  if (pref === 'like') { line = pick(['好好吃！', food.emoji + ' 这个我最喜欢了！', '（开心地接了过去）', '谢谢你～']); cfg.mood = 'happy'; playSqueak(pitchFor(id) * 1.35); }
+  else if (pref === 'dislike') { line = pick(['……我不太想吃' + food.name + '。', '（默默推开了）', '唔，这个不要。', '（皱起了眉头）']); cfg.mood = 'angry'; playSqueak(pitchFor(id) * 0.6); }
+  else { line = pick(['（接过去看了看）', '谢谢。', '嗯，收下了。', '（慢慢吃了起来）']); cfg.mood = 'neutral'; playSqueak(pitchFor(id)); }
+  showBubble(id, withCatchphrase(id, line));
+  saveData();
+  setTimeout(() => { cfg.mood = cfg.defaultMood || 'neutral'; }, 8000);
+}
+
+// 面板相关函数(为节省篇幅，这里使用精简写法)
+function openPanel() { document.getElementById('panel').classList.add('open'); renderPanel(); }
+function closePanel() { document.getElementById('panel').classList.remove('open'); }
+function makeTextarea(labelText, value, onChange, tipText) {
+  const wrap = document.createElement('div');
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  if (tipText) { const tip = document.createElement('span'); tip.className = 'tip'; tip.textContent = ' ' + tipText; label.appendChild(tip); }
+  const ta = document.createElement('textarea'); ta.value = value; ta.oninput = () => onChange(ta.value);
+  wrap.appendChild(label); wrap.appendChild(ta); return wrap;
+}
+
+function renderPanel() {
+  const body = document.getElementById('panel-body');
+  body.innerHTML = '';
+
+  const globalCard = document.createElement('div');
+  globalCard.className = 'card';
+  globalCard.innerHTML = '<h3>🌿 全局设置</h3>';
+
+  const speedLabel = document.createElement('label'); speedLabel.textContent = '移动速度';
+  const speedRow = document.createElement('div'); speedRow.className = 'row';
+  const speedInput = document.createElement('input'); speedInput.type = 'range'; speedInput.min = '0.05'; speedInput.max = '0.8'; speedInput.step = '0.05'; speedInput.value = String(getSpeed());
+  const speedVal = document.createElement('span'); speedVal.style.cssText = 'font-size:12px;color:#a08d94;min-width:32px;text-align:right;'; speedVal.textContent = getSpeed().toFixed(2);
+  speedInput.oninput = () => { data.settings.speed = parseFloat(speedInput.value); speedVal.textContent = data.settings.speed.toFixed(2); saveData(); };
+  speedRow.appendChild(speedInput); speedRow.appendChild(speedVal);
+  globalCard.appendChild(speedLabel); globalCard.appendChild(speedRow);
+
+  const soundLabel = document.createElement('label'); soundLabel.textContent = '吱吱声';
+  const soundSel = document.createElement('select');
+  [['true', '开启'], ['false', '关闭']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; if (String(data.settings.sound) === v) o.selected = true; soundSel.appendChild(o); });
+  soundSel.onchange = () => { data.settings.sound = soundSel.value === 'true'; saveData(); updateSoundBtn(); if (data.settings.sound) { ensureAudio(); playSqueak(1); } };
+  globalCard.appendChild(soundLabel); globalCard.appendChild(soundSel);
+
+  const bgLabel = document.createElement('label'); bgLabel.textContent = '背景图';
+  const bgTip = document.createElement('span'); bgTip.className = 'tip'; bgTip.textContent = ' 会铺满整个花园（cover）'; bgLabel.appendChild(bgTip);
+  globalCard.appendChild(bgLabel);
+  if (data.settings.bgImage) {
+    const preview = document.createElement('img'); preview.className = 'bg-preview'; preview.src = data.settings.bgImage; globalCard.appendChild(preview);
+  } else {
+    const ph = document.createElement('div'); ph.className = 'bg-placeholder'; ph.textContent = '还没有背景图'; globalCard.appendChild(ph);
+  }
+  const bgRow = document.createElement('div'); bgRow.className = 'row';
+  const bgBtn = document.createElement('button'); bgBtn.className = 'btn small'; bgBtn.textContent = data.settings.bgImage ? '更换背景' : '上传背景';
+  bgBtn.onclick = () => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const r = new FileReader(); r.onload = (ev) => { data.settings.bgImage = ev.target.result; saveData(); applyBackground(); renderPanel(); }; r.readAsDataURL(f);
+    };
+    inp.click();
+  };
+  bgRow.appendChild(bgBtn);
+  if (data.settings.bgImage) {
+    const bgDel = document.createElement('button'); bgDel.className = 'btn small danger'; bgDel.textContent = '移除背景';
+    bgDel.onclick = () => { data.settings.bgImage = null; saveData(); applyBackground(); renderPanel(); };
+    bgRow.appendChild(bgDel);
+  }
+  globalCard.appendChild(bgRow);
+  body.appendChild(globalCard);
+
+  if (data.characters.length >= 2) {
+    const relCard = document.createElement('div'); relCard.className = 'card'; relCard.innerHTML = '<h3>💞 关系设定</h3>';
+    const tip = document.createElement('div'); tip.style.cssText = 'font-size:11px;color:#c4b0b7;margin:-4px 0 10px;line-height:1.5;'; tip.textContent = '任何关系碰到都会聊天；亲密 / 恋人 / 单方面喜欢会跟随对方。'; relCard.appendChild(tip);
+    for (let i = 0; i < data.characters.length; i++) {
+      for (let j = i + 1; j < data.characters.length; j++) {
+        const a = data.characters[i], b = data.characters[j], cur = getRelation(a.id, b.id);
+        const row = document.createElement('div'); row.className = 'relation-row';
+        const who = document.createElement('span'); who.className = 'who'; who.textContent = a.name + ' ↔ ' + b.name;
+        const sel = document.createElement('select');
+        Object.entries(RELATION_LABELS).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; if (cur === v) o.selected = true; sel.appendChild(o); });
+        sel.onchange = () => setRelation(a.id, b.id, sel.value);
+        row.appendChild(who); row.appendChild(sel); relCard.appendChild(row);
+      }
+    }
+    body.appendChild(relCard);
+  } else if (data.characters.length === 1) {
+    const tipCard = document.createElement('div'); tipCard.className = 'card'; tipCard.innerHTML = '<h3>💞 关系设定</h3><div style="font-size:12px;color:#c4b0b7;">至少需要两个角色，才能设定他们之间的关系。</div>'; body.appendChild(tipCard);
+  }
+
+  if (data.characters.length === 0) {
+    const e = document.createElement('div'); e.className = 'empty'; e.textContent = '还没有角色，先点「＋ 角色」添加一个吧 🐣'; body.appendChild(e);
+  }
+
+  data.characters.forEach(cfg => {
+    if (!cfg.foodPrefs) cfg.foodPrefs = {};
+    const card = document.createElement('div'); card.className = 'card';
+    const head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:4px;';
+    const avatar = document.createElement('img'); avatar.src = cfg.image; avatar.style.cssText = 'width:48px;height:48px;object-fit:contain;border-radius:12px;background:#fff7f9;';
+    const title = document.createElement('strong'); title.style.fontSize = '16px'; title.textContent = cfg.name;
+    head.appendChild(avatar); head.appendChild(title); card.appendChild(head);
+
+    const nameLabel = document.createElement('label'); nameLabel.textContent = '名字';
+    const nameInput = document.createElement('input'); nameInput.type = 'text'; nameInput.value = cfg.name;
+    nameInput.oninput = () => { cfg.name = nameInput.value; title.textContent = nameInput.value; saveData(); };
+    card.appendChild(nameLabel); card.appendChild(nameInput);
+
+    const sizeLabel = document.createElement('label'); sizeLabel.textContent = '大小';
+    const sizeRow = document.createElement('div'); sizeRow.className = 'row';
+    const sizeInput = document.createElement('input'); sizeInput.type = 'range'; sizeInput.min = '40'; sizeInput.max = '200'; sizeInput.step = '5'; sizeInput.value = String(cfg.size || 90);
+    const sizeVal = document.createElement('span'); sizeVal.style.cssText = 'font-size:12px;color:#a08d94;min-width:44px;text-align:right;'; sizeVal.textContent = (cfg.size || 90) + 'px';
+    sizeInput.oninput = () => {
+      const v = parseInt(sizeInput.value, 10);
+      cfg.size = v; sizeVal.textContent = v + 'px';
+      const ch = characters.find(c => c.id === cfg.id);
+      if (ch) {
+        ch.size = v; ch.el.style.width = v + 'px'; ch.el.style.height = v + 'px';
+        const garden = document.getElementById('garden');
+        const maxX = Math.max(4, garden.clientWidth - v - 4), maxY = Math.max(4, garden.clientHeight - v - 76);
+        ch.x = Math.min(ch.x, maxX); ch.y = Math.min(ch.y, maxY);
+        ch.el.style.left = ch.x + 'px'; ch.el.style.top = ch.y + 'px'; cfg.x = ch.x; cfg.y = ch.y;
+      }
+      saveData();
+    };
+    sizeRow.appendChild(sizeInput); sizeRow.appendChild(sizeVal);
+    card.appendChild(sizeLabel); card.appendChild(sizeRow);
+
+    const moodLabel = document.createElement('label'); moodLabel.textContent = '默认心情';
+    const moodSel = document.createElement('select');
+    Object.entries({ neutral: '平静', happy: '开心', confused: '疑惑', angry: '生气' }).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; if ((cfg.defaultMood || 'neutral') === v) o.selected = true; moodSel.appendChild(o); });
+    moodSel.onchange = () => { cfg.defaultMood = moodSel.value; cfg.mood = moodSel.value; saveData(); };
+    card.appendChild(moodLabel); card.appendChild(moodSel);
+
+    const rxLabel = document.createElement('label'); rxLabel.textContent = '反应表情图';
+    const rxTip = document.createElement('span'); rxTip.className = 'tip'; rxTip.textContent = ' 被点击 / 碰到 / 被撞时显示 3 秒'; rxLabel.appendChild(rxTip);
+    card.appendChild(rxLabel);
+    const rxRow = document.createElement('div'); rxRow.className = 'reaction-row';
+    if (cfg.reactionImage) {
+      const rxPreview = document.createElement('img'); rxPreview.className = 'reaction-preview'; rxPreview.src = cfg.reactionImage; rxRow.appendChild(rxPreview);
+    } else {
+      const ph = document.createElement('div'); ph.className = 'reaction-preview'; ph.textContent = '无'; rxRow.appendChild(ph);
+    }
+    const rxBtn = document.createElement('button'); rxBtn.className = 'btn small'; rxBtn.textContent = cfg.reactionImage ? '更换' : '上传';
+    rxBtn.onclick = () => {
+      const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+      inp.onchange = (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader(); r.onload = (ev) => { cfg.reactionImage = ev.target.result; saveData(); renderPanel(); }; r.readAsDataURL(f);
+      };
+      inp.click();
+    };
+    rxRow.appendChild(rxBtn);
+    if (cfg.reactionImage) {
+      const rxDel = document.createElement('button'); rxDel.className = 'btn small danger'; rxDel.textContent = '移除';
+      rxDel.onclick = () => { cfg.reactionImage = null; saveData(); renderPanel(); };
+      rxRow.appendChild(rxDel);
+    }
+    card.appendChild(rxRow);
+
+    card.appendChild(makeTextarea('口头禅', (cfg.catchphrase || []).join('\n'), (v) => { cfg.catchphrase = v.split('\n').map(s => s.trim()).filter(Boolean); saveData(); }, '每行一句。说话时有 30% 概率接在句子后面'));
+    card.appendChild(makeTextarea('感兴趣的话题', (cfg.topics || []).join('\n'), (v) => { cfg.topics = v.split('\n').map(s => s.trim()).filter(Boolean); saveData(); }, '每行一个词语。相撞时合并并随机抽取拼接'));
+    card.appendChild(makeTextarea('点击台词', (cfg.clickLines || []).join('\n'), (v) => { cfg.clickLines = v.split('\n').map(s => s.trim()).filter(Boolean); saveData(); }, '点击时随机说一句；留空则用心情池'));
+    card.appendChild(makeTextarea('相遇聊天台词', (cfg.meetLines || []).join('\n'), (v) => { cfg.meetLines = v.split('\n').map(s => s.trim()).filter(Boolean); saveData(); }, '相遇时随机说一句；留空则用关系池'));
+
+    const foodLabel = document.createElement('label'); foodLabel.textContent = '食物偏好';
+    const foodTip = document.createElement('span'); foodTip.className = 'tip'; foodTip.textContent = ' 点一下：普通 → 喜欢 → 讨厌'; foodLabel.appendChild(foodTip);
+    card.appendChild(foodLabel);
+    const foodRow = document.createElement('div'); foodRow.className = 'food-prefs';
+    FOODS.forEach(f => {
+      const st = cfg.foodPrefs[f.id] || 'normal';
+      const b = document.createElement('button'); b.className = 'food-pref ' + st; b.textContent = f.emoji;
+      b.onclick = () => {
+        const cur = cfg.foodPrefs[f.id] || 'normal';
+        const next = cur === 'normal' ? 'like' : cur === 'like' ? 'dislike' : 'normal';
+        cfg.foodPrefs[f.id] = next; b.className = 'food-pref ' + next; saveData();
+      };
+      foodRow.appendChild(b);
+    });
+    card.appendChild(foodRow);
+
+    const legend = document.createElement('div'); legend.className = 'food-legend'; legend.textContent = '♥ = 喜欢  ✕ = 讨厌'; card.appendChild(legend);
+
+    const spLabel = document.createElement('label'); spLabel.textContent = '碰到特定角色时说的话'; card.appendChild(spLabel);
+    data.characters.filter(o => o.id !== cfg.id).forEach(other => {
+      const row = document.createElement('div'); row.style.cssText = 'margin:6px 0;padding:8px;background:#fffafb;border-radius:12px;';
+      const tag = document.createElement('div'); tag.style.cssText = 'font-size:12px;color:#a08d94;margin-bottom:4px;'; tag.textContent = '对 ' + other.name + '：';
+      const ta = document.createElement('textarea'); ta.style.minHeight = '40px'; ta.style.fontSize = '13px'; ta.value = ((cfg.specialLines && cfg.specialLines[other.id]) || []).join('\n');
+      ta.oninput = () => {
+        if (!cfg.specialLines) cfg.specialLines = {};
+        cfg.specialLines[other.id] = ta.value.split('\n').map(s => s.trim()).filter(Boolean); saveData();
+      };
+      row.appendChild(tag); row.appendChild(ta); card.appendChild(row);
+    });
+
+    const delBtn = document.createElement('button'); delBtn.className = 'btn danger small'; delBtn.textContent = '删除这个角色'; delBtn.style.marginTop = '10px';
+    delBtn.onclick = () => {
+      if (!confirm('确定删除 ' + cfg.name + ' 吗？')) return;
+      data.characters = data.characters.filter(c => c.id !== cfg.id);
+      Object.keys(data.relations).forEach(k => { if (k.indexOf(cfg.id) !== -1) delete data.relations[k]; });
+      saveData(); renderScene(); renderPanel();
+    };
+    card.appendChild(delBtn);
+    body.appendChild(card);
+  });
+}
+
+function addCharacter() {
+  ensureAudio();
+  const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
+  input.onchange = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const image = ev.target.result;
+      const name = prompt('给这个 OC 起个名字：', '新角色');
+      if (name === null) return;
+      const id = uid();
+      data.characters.push({
+        id, name: name.trim() || '未命名', image, size: 90, mood: 'neutral', defaultMood: 'neutral',
+        foodPrefs: {}, catchphrase: [], topics: [], clickLines: [], meetLines: [], specialLines: {}, reactionImage: null
+      });
+      saveData(); renderScene(); openPanel();
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+function openDataPanel() {
+  document.getElementById('panel').classList.add('open');
+  const body = document.getElementById('panel-body'); body.innerHTML = '';
+  const card = document.createElement('div'); card.className = 'card';
+  card.innerHTML = '<h3>⇅ 存档</h3><p style="font-size:13px;color:#a08d94;line-height:1.6;">导出会把所有数据打包成一个 JSON 文件。</p>';
+  const exp = document.createElement('button'); exp.className = 'btn primary'; exp.textContent = '导出 JSON 文件'; exp.style.cssText = 'width:100%;margin-bottom:8px;';
+  exp.onclick = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'oc-garden-' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); URL.revokeObjectURL(url);
+  };
+  card.appendChild(exp);
+  const imp = document.createElement('button'); imp.className = 'btn'; imp.textContent = '导入 JSON 文件'; imp.style.width = '100%';
+  imp.onclick = () => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+    inp.onchange = (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const r = new FileReader();
+      r.onload = (ev) => {
+        try {
+          const imported = JSON.parse(ev.target.result);
+          if (!imported.characters || !Array.isArray(imported.characters)) throw new Error('格式不对');
+          data = imported;
+          if (!data.relations) data.relations = {};
+          if (!data.settings) data.settings = { speed: 0.25, sound: true, bgImage: null };
+          if (data.settings.bgImage === undefined) data.settings.bgImage = null;
+          if (!data.nextId) data.nextId = 1;
+          data.characters.forEach(c => {
+            if (!c.foodPrefs) c.foodPrefs = {}; if (!c.catchphrase) c.catchphrase = []; if (!c.topics) c.topics = [];
+            if (!c.clickLines) c.clickLines = []; if (!c.meetLines) c.meetLines = []; if (!c.specialLines) c.specialLines = {};
+            if (c.reactionImage === undefined) c.reactionImage = null; if (!c.size) c.size = 90;
+          });
+          saveData(); applyBackground(); renderScene(); updateSoundBtn(); openPanel(); alert('导入成功！');
+        } catch (err) { alert('导入失败：' + err.message); }
+      };
+      r.readAsText(f);
+    };
+    inp.click();
+  };
+  card.appendChild(imp);
+  const hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = '图片存在浏览器里，清理数据会丢失，记得定期导出。'; card.appendChild(hint);
+  body.appendChild(card);
+
+  resetCard=document.createElement('div')；resetCard.className='card'；resetCard.innerHTML='<h3>🗑 重置</h3>'；const resetCard = document.createElement('div'); resetCard.className = 'card'; resetCard.innerHTML = '<h3>🗑 重置</h3>';
+Const=document.createElement('button')；resetBtn.className='btn危险'；resetBtn.textContent='清空所有数据'；resetBtn.style.width='100%'；const resetBtn = document.createElement('button'); resetBtn.className = 'btn danger'; resetBtn.textContent = '清空所有数据'; resetBtn.style.width = '100%';
+  .onclick=()=>{resetBtn.onclick = () => {
+</(！确认('确定清空所有角色和设定吗？'))返回；if (!confirm('确定清空所有角色和设定吗？')) return;
+data=defaultData()；saveData()；applyBackground()；renderScene()；updateSoundBtn()；openPanel()；data = defaultData(); saveData(); applyBackground(); renderScene(); updateSoundBtn(); openPanel();
+  };
+resetCard.appendChild(resetBtn)；body.appendChild(resetCard)；resetCard.appendChild(resetBtn); body.appendChild(resetCard);
+}
+
+function updateSoundBtn(){ updateSoundBtn() {
+常量b=document.getElementById('btn-sound')；b.textContent=数据.settings.sound？'🔊'：'🔇'；const b = document.getElementById('btn-sound'); b.textContent = data.settings.sound ? '🔊' : '🔇';
+}
+
+文件
+.
+onClick
+否则openPanel()；如果(p.classList.包含('打开'))closePanel()；否则openPanel()；(p.classList.包含('打开'))closePanel()；否则openPanel()；如果 (p.classList.包含('打开')) closePanel(); 其他 openPanel();
+};
+文件。getElementById('btn-data').onclick=openDataPanel；.getElementById('btn-data').onClick=openDataPanel；.getElementById('btn-data').onClick=openDataPanel；.getElementById('btn-data').onClick = openDataPanel;
+文件。getElementById('btn-close').onclick=closePanel；.getElementById('btn-close').onclick=closePanel；。getElementById('btn-close').onClick=closePanel；.getElementById('btn-close').onClick=closePanel；getElementById('btn-close').onclick=closePanel；.getElementById('btn-close').onclick = closePanel;
+文件。getElementById('btn-sound')。onClick=()=>{。getElementById('btn-sound')。onClick=()=>{.getElementById('btn-sound')。onclick=()=>{.getElementById('btn-sound').onclick=()=>{('btn-sound')。onClick=()=>{。getElementById('btn-sound')。onClick=()=>{.getElementById('btn-sound')。onclick=()=>{.getElementById('btn-sound').onclick = () => {
+data.settings.sound=！数据。settings.sound；saveData()；updateSoundBtn()；确保音频()；data.settings.sound=！数据。settings.sound；saveData()；updateSoundBtn()；确保音频()；.settings.sound=！数据。settings.sound；saveData()；updateSoundBtn()；确保音频()；data.settings.sound=！数据。settings.sound；saveData()；updateSoundBtn()；确保音频()；.settings.sound=！数据。settings.sound；saveData()；updateSoundBtn()；确保音频()；data.settings.sound=！数据。settings.sound；saveData()；updateSoundBtn()；确保音频()；.settings.sound=！数据。settings.sound；saveData()；updateSoundBtn()；确保音频()；data.settings.sound = !data.settings.sound; saveData(); updateSoundBtn(); ensureAudio();
+if(数据。设置。声音)playSqueak(1)；if(数据。设置。声音)播放吱吱声(1)；(数据。设置。sound)playSqueak(1)；if(data.settings.sound)playSqueak(1)；(data.settings.sound)playSqueak(1)；if(data.settings.sound)playSqueak(1)；(data.settings.sound)playSqueak(1)；if (data.settings.sound) playSqueak(1);
+};
+
+文件。querySelectorAll('.food-chip').foreach(chip=>{.querySelectorAll('.food-chip').foreach(chip=>{('.food-chip').foreach(chip=>{.querySelectorAll('.food-chip').forEach(chip=>{('.food-chip').foreach(chip=>{.querySelectorAll('.food-chip').foreach(chip=>{('.food-chip').foreach(chip=>{.querySelectorAll('.food-chip').forEach(chip => {
+芯片。addEventListener('pointerdown'，(e)=>startFoodDrag(e，chip.dataset.food))；chip.AddEventListener('pointerdown'，(e)=>startFoodDrag(e，chip.dataset.food))；.addEventListener('pointerdown'，(e)=>startFoodDrag(e，chip.dataset.food))；chip.addEventListener('pointerdown',(e)=>startFoodDrag(e，chip.dataset.food))；('pointerdown'，(e)=>startFoodDrag(e，chip.dataset.food))；chip.AddEventListener('pointerdown'，(e)=>startFoodDrag(e，chip.dataset.food))；.addEventListener('pointerdown'，(e)=>startFoodDrag(e，chip.dataset.food))；chip.addEventListener('pointerdown', (e) => startFoodDrag(e, chip.dataset.food));
+});
+
+文件。addEventListener('touchmove'，(e)=>{.AddEventListener('touchmove'，(e)=>{.addEventListener('touchmove'，(e)=>{.AddEventListener('touchmove'，(e)=>{('touchmove'，(e)=>{.AddEventListener('touchmove'，(e)=>{.addEventListener('touchmove'，(e)=>{.addEventListener('touchmove', (e) => {
+if(foodDrag||(charDrag&&charDrag.moved))e.proventDefault()；if(foodDrag||(charDrag&&charDrag.moved)已移动))e.proventDefault()；(foodDrag||(charDrag&&charDrag.moved))e.proventDefault()；if(foodDrag||(charDrag&&charDrag.moved))e.proventDefault()；(foodDrag||(charDrag&&charDrag.moved))e.proventDefault()；if(foodDrag||(charDrag&&charDrag.moved))e.proventDefault()；(foodDrag||(charDrag&&charDrag.moved))e.preventDefault()；if (foodDrag || (charDrag && charDrag.moved)) e.preventDefault();
+}，{passive:false})；，{passive:false})；，{passive:false})；，{passive:false})；，{passive:false})；，{passive:false})；，{passive:false})；, { passive: false });
+
+函数init(){init(){init(){init(){init(){ init(){init(){ init(){ init() {
+applyBackground()；applyBackground()；()；applyBackground()；()；applyBackground()；()；applyBackground();
+updateSoundBtn()；updateSoundBtn()；()；updateSoundBtn()；()；updateSoundBtn()；()；updateSoundBtn();
+if(数据。字符。长度====0){if(数据。字符。长度====0){(数据。字符。长度====0){if(data.characters.length====0){(data.characters.length====0){if(data.characters.length====0){(data.characters.length====0){if (data.characters.length === 0) {
+setTimeout(()=>{setTimeout(()=>{()=>{setTimeout(()=>{(()=>{setTimeout(()=>{(()=>{setTimeout(() => {
+const garden=document.getElementById('garden')；const garden=document.getElementById('garden')；garden=document.getElementById('garden')；const garden=document.getElementById('garden')； garden=document.getElementById('garden')；const garden=document.getElementById('garden')；garden=document.getElementById('garden')；const garden = document.getElementById('garden');
+常量提示=document.createElement('div')；常量提示=文件。createElement('div')；hint=document.createElement('div')；const hint=document.createElement('div')；=document.createElement('div')；常量提示=document.createElement('div')；hint=document.createElement('div')；const hint = document.createElement('div');
+hint.style.cssText='position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#c4b0b7;font-size:14px;line-height:1.9;pointer-events:none;width:80%;';hint.style.cssText='position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#c4b0b7;font-size:14px;line-height:1.9;pointer-events:none;width:80%;';.style.cssText='position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#c4b0b7;font-size:14px;line-height:1.9;point.style.cssText='position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#c4b0b7;font-size:14px;line-height:1.9;pointer-events:none;width:80%;';hint.style.cssText='position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#c4b0b7;font-size:14px;line-height:1.9;pointer-events:none;width:80%;';.style.cssText=er-events：无；宽度：80%；'；hint.style.cssText='position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#c4b0b7;font-size:14px;line-height:1.9;pointer-events:none;width:80%;';;hint.style.cssText = 'position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#c4b0b7;font-size:14px;line-height:1.9;pointer-events:none;width:80%;';
+hint.innerHTML='欢迎来到OC小花园 🌷<br>点下面“+角色”导入第一张图片<br><span style="font-size:12px；">按住角色可以拖动，甩出去会飞</span>'；hint.innerHTML='欢迎来到OC小花园 🌷<br>点下面“+角色”导入第一张图片<br><span style="font-size:12px；">按住角色可以拖动，甩出去会飞</span>'；.innerHTML='欢迎来到OC小花园 🌷<br>点下面“+角色”导入第一张图片<br><span style="font-size:12px；">按住角色可以拖动，甩出去会飞</span>'；hint.innerHTML='欢迎来到OC小花园 🌷<br>点下面“+角色”导入第一张图片<br><span style="font-size:12px；">按住角色可以拖动，甩出去会飞</span>'；.innerHTML='欢迎来到OC小花园 🌷<br>点下面“+角色”导入第一张图片<br><span style="font-size:12px；">按住角色可以拖动，甩出去会飞</span>'；hint.innerHTML='欢迎来到OC小花园 🌷<br>点下面“+角色”导入第一张图片<br><span style="font-size:12px；">按住角色可以拖动，甩出去会飞</span>'；.innerHTML='欢迎来到OC小花园 🌷<br>点下面“+角色”导入第一张图片<br><span style="font-size:12px；">按住角色可以拖动，甩出去会飞</span>'；hint.innerHTML = '欢迎来到 OC 小花园 🌷<br>点下面「＋ 角色」导入第一张图片<br><span style="font-size:12px;">按住角色可以拖动，甩出去会飞</span>';
+parden.appendChild(提示)；.appendChild(提示)；garden.appendChild(提示)；.appendChild(提示)；.appendChild(提示)；garden.appendChild(hint);
+setTimeout(()=>提示。remove()，6000)；setTimeout(()=>提示。remove()，6000)；(()=>提示。remove()，6000)；setTimeout(()=>hint.remove()，6000)；(()=>提示。remove()，6000)；setTimeout(()=>hint.remove()，6000)；(()=>hint.remove()，6000)；setTimeout(() => hint.remove(), 6000);
+    }, 300);}, 300);}, 300);}, 300);}, 300);}, 300);}, 300);}, 300);
+  }
+renderScene()；renderScene()；()；renderScene()；()；renderScene()；()；renderScene();
+}
+
+init()；()；()；();()；()；()；();
+</脚本>脚本>/脚本>脚本>
+</身体>身体>
+</超文本标记语言></</超文本标记语言>超文本标记语言('btn-sound')。onClick=()=>{.getElementById('btn-sound')。onClick=()=>{
